@@ -1,0 +1,528 @@
+---
+title: "Final Project - Titanic dataset"
+author: "Group 2: Christine Otruba & Shweta Kalbhor"
+output: html_document
+date: "04/27/2023 @ 4:30pm - 5:00 pm"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Instructions for Final Project
+
+The final project is to investigate a dataset using all the tools we learn in class. Your project should include the following three parts.
+
+1) Data Preparation: Show the information of the dataset. E.g.# of observations, # of attributes, data types, missing values, etc.
+2) Data Exploration(EDA): Data Visualization, at least one histogram, one boxplot, and one overlay histogram with your conclusion
+3) Data Analysis
+        Hypothesis Testing: Construct a hypothesis testing with null and alternative hypotheses. Use the appropriate test to get the conclusion.
+        Build a linear regression model with subset selection. Please indicate all significant attributes, assess your model, and predict in a test dataset.
+
+
+Read and View the `titanic_original` dataset which was obtained from https://web.stanford.edu/class/archive/cs/cs109/cs109.1166/problem12.html
+
+```{r}
+# import packages
+library(MASS)
+library(tidyverse) 
+library(rcompanion)
+library(MLmetrics)
+#load data
+titanic_original <- read.csv("~/Documents/IIT/Spring2023/ITMD514/FinalProject/titanic.csv", header = TRUE, sep=",")
+str(titanic_original)
+head(titanic_original)
+```
+
+## Background Information:
+The RMS Titanic, a luxury steamship, sank in the early hours of April 15, 1912, off the coast of Newfoundland in the North Atlantic after sideswiping an iceberg during its maiden voyage. Of the 2,240 passengers and crew on board, more than 1,500 lost their lives in the disaster. The dataset selected is comprised of fictional names and related data but follows realistic values of the passengers on the Titanic. This presentation will attempt to find correlation regarding the survival rate and price paid for fare/Class (1st, 2nd, 3rd), age, and/or sex.
+
+```{r,echo = FALSE}
+knitr::include_graphics("~/Documents/IIT/Spring2023/ITMD514/FinalProject/Titanic-iceberg-British-15-1912.webp")
+```
+
+>Image source: https://www.britannica.com/topic/Titanic
+
+## 1) Data Preparation: Show the information of the dataset. E.g.# of observations, # of attributes, data types, missing values, etc.
+
+In order to work with the data better, columns are converted into more appropriate data types. For example, the `titanic_original$Age` is converted from data type "number" to "integer". Additionally, `titanic_original$Sex` (character data type) is used to create a new column `titanic_original$Sex_M_F` which is a "Factor" data type, in order to identify male vs female data. The `titanic_original` dataset is then further cleaned up by removing columns that are not being used in this final project: `$Name`,  `$Siblings.Spouses.Aboard`, `$Parents.Children.Aboard`. Also, the numerical values (Age and Fare) were placed into groups in order to better formulate conclusions.
+
+
+```{r titanic}
+titanic_original$Age<-as.integer(titanic_original$Age)
+titanic_original$Sex_M_F <- with(titanic_original, ifelse(substr(titanic_original$Sex,1,1) =="f", "F", "M"))
+titanic_original[,c(1:2,9)]<-lapply(titanic_original[,c(1:2,9)], factor)
+titanic<-titanic_original[,c(1:2,5,8:9)]
+titanic_dim<-dim(titanic)
+summ_age<-summary(titanic$Age)
+summ_fare<-summary(titanic$Fare)
+
+titanic$AgeGroup <- cut(titanic$Age, 
+                         breaks = c(-Inf
+                                    ,5 ,10 ,15,20,25,30,35,40,45,50,55,60 ,65,70,75,80,85
+                                    , Inf), 
+                         
+                         labels = c("0-4 years"
+                                    ,"5-9 years","10-14 years","15-19 years","20-24 years"
+                                    ,"25-29 years","30-34 years","35-39 years","40-44 years"
+                                    ,"45-49 years","50-54 years","55-59 years","60-64 years"
+                                    ,"65-69 years","70-74 years","75-79 years","80-84 years"
+                                    ,"85+ years"),
+                         right = FALSE)
+
+titanic$FarePrice <- cut(titanic$Fare, 
+                         breaks = c(-Inf
+                                    ,10 ,20,30,40,50,60,70,80,90,100,200,300
+                                    , Inf), 
+                         
+                         labels = c("0-9 £","10-19 £","20-29 £","30-39 £","40-49 £","50-59 £","60-69 £","70-79 £","80-89 £","90-99 £","100-199 £","200-299 £","300+ £"),
+                         right = FALSE)
+
+str(titanic)
+summary(titanic)
+glimpse(titanic)
+sum(is.na(titanic))
+```
+
+> The `titanic` dataset has `r titanic_dim[1]` observations of 7 attributes which are either data type: factor, integer, or number. There are no missing values.<br>By using the `summary` function, we are able to tell that the average age of a passenger on the Titanic was `r summ_age[4]` years old with 80 being the oldest. The average price paid for fare was £`r summ_fare[4]`
+
+
+## 2) Data Exploration(EDA): Data Visualization, at least one histogram, one boxplot, and one overlay histogram with your conclusion
+
+**Histograms and Overlay Histograms**
+
+```{r histogram, echo=FALSE}
+#bins = 10
+ggplot(titanic, aes(Age)) +
+  geom_histogram(bins = 10) + ggtitle('Histogram of Age') +
+theme(plot.background = element_rect(color = "deepskyblue3", linewidth = 3))
+# we know most of the population on titanic were young, but we can't use this information directly to impute age of missing passengers. 
+ggplot(titanic, aes(Age, fill = Sex_M_F)) +
+  geom_histogram(bins = 10, position="dodge") + ggtitle('Histogram of Age by Sex')+
+theme(plot.background = element_rect(color = "black", linewidth = 3))
+
+pp <- ggplot(data = titanic, aes(x = Sex_M_F)) +
+   geom_bar(aes(fill = Survived),colour="black") + ggtitle('Histogram of Survival by Sex')+theme(plot.background = element_rect(color = "deepskyblue3", linewidth = 3))
+pp+ coord_flip()+theme(axis.text.x = element_text( 
+                           size=11, angle=45))
+
+pp3 <- ggplot(data = titanic, aes(x=Sex_M_F)) + geom_bar(aes(fill=Survived),colour="black",position="fill")+ ggtitle('Histogram of Survival by Sex (Normalized)')+theme(plot.background = element_rect(color = "black", linewidth = 3))
+#normalize data
+pp3 + coord_flip()+theme(axis.text.x = element_text( 
+                           size=11, angle=45))
+
+ggplot(titanic, aes(Age, fill = Pclass)) +
+  geom_histogram(bins = 10, position="dodge") + ggtitle('Histogram of Age by Class')+
+theme(plot.background = element_rect(color = "deepskyblue3", linewidth = 3))
+
+# Overlay Histogram
+ggplot(titanic, aes(x= Age)) + geom_histogram(bins = 30,data = titanic[titanic$Sex_M_F=="M",], fill = "red", alpha = 0.2) + geom_histogram(bins = 30, data = titanic[titanic$Sex_M_F=="F",], fill = "green", alpha = 0.4)+ ggtitle('Histogram of Age by Sex')+
+theme(plot.background = element_rect(color = "black", linewidth = 3))
+
+titanic_Class1 <- data.frame(titanic[titanic$Pclass == 1,])
+titanic_Class2 <- data.frame(titanic[titanic$Pclass == 2,])
+titanic_Class3 <- data.frame(titanic[titanic$Pclass == 3,])
+
+pl <- ggplot(data = titanic,aes(x = AgeGroup,fill = Pclass))
+pl <- pl + geom_bar()
+pl <- pl + theme_minimal()+ ggtitle('Histogram of Age Groups by Class')
+pl <- pl  + theme(axis.text.x = element_text(angle = 90,hjust =0 ),plot.background = element_rect(color = "deepskyblue3", linewidth = 3))
+pl
+
+p3 <- ggplot(data = titanic,aes(x = AgeGroup,fill = Survived))
+p3 <- p3 + geom_bar()
+p3 <- p3 + theme_minimal()+ ggtitle('Histogram of Survival by Age Groups')
+p3 <- p3  + theme(axis.text.x = element_text(angle = 90,hjust =0 ),plot.background = element_rect(color = "black", linewidth = 3))
+p3
+
+p <- ggplot(data = titanic, aes(x = Pclass)) +
+   geom_bar(aes(fill = Survived),colour="black") + ggtitle('Histogram of Survival by Class')+theme(plot.background = element_rect(color = "deepskyblue3", linewidth = 3))
+p+ coord_flip()+theme(axis.text.x = element_text( 
+                           size=11, angle=45))
+
+pp2 <- ggplot(data = titanic, aes(x=Pclass)) + geom_bar(aes(fill=Survived),colour="black",position="fill")+ ggtitle('Histogram of Survival by Class (Normalized)')+theme(plot.background = element_rect(color = "black", linewidth = 3))
+#normalize data
+pp2 + coord_flip()+theme(axis.text.x = element_text( 
+                           size=11, angle=45))
+```
+
+>Passengers on the Titanic were mostly between the ages of 20 to 40 years of age. This remains consistent amongst the men and women. It is disheartening to see that there were many young passengers amongst all 3 classes; however, most of them were 3rd Class. 1st Class had the highest percentage of survivors. 
+
+```{r histogram2, echo=FALSE}
+#bins = 10
+ggplot(titanic, aes(Fare)) +
+  geom_histogram(bins = 10) + ggtitle('Histogram of Fare Paid (£)') +
+theme(plot.background = element_rect(color = "black", linewidth = 3))
+
+ggplot(titanic, aes(Fare, fill = Pclass)) +
+  geom_histogram(bins = 10, position="dodge") + ggtitle('Histogram of Fare Paid (£) by Class')+
+theme(plot.background = element_rect(color = "deepskyblue3", linewidth = 3))
+
+# Overlay Histogram
+ggplot(titanic, aes(x= Fare)) + geom_histogram(bins = 30,data = titanic[titanic$Sex_M_F=="M",], fill = "red", alpha = 0.2) + geom_histogram(bins = 30, data = titanic[titanic$Sex_M_F=="F",], fill = "green", alpha = 0.4)+ ggtitle('Histogram of Fare Paid (£) by Sex')+
+theme(plot.background = element_rect(color = "black", linewidth = 3))
+
+p2 <- ggplot(data = titanic,aes(x = FarePrice,fill = Pclass))
+p2 <- p2 + geom_bar()
+p2 <- p2 + theme_minimal()+ ggtitle('Histogram of Class by Fare Paid (£) Groups')
+p2 <- p2  + theme(axis.text.x = element_text(angle = 90,hjust =0 ),plot.background = element_rect(color = "deepskyblue3", linewidth = 3))
+p2 
+
+p4 <- ggplot(data = titanic,aes(x = FarePrice,fill = Survived))
+p4 <- p4 + geom_bar()
+p4 <- p4 + theme_minimal()+ ggtitle('Histogram of Survival by Fare Paid (£)')
+p4 <- p4  + theme(axis.text.x = element_text(angle = 90,hjust =0 ),plot.background = element_rect(color = "black", linewidth = 3))
+p4
+
+```
+<br>
+
+>3rd Class passengers made up the majority of those traveling on the Titanic. The majority of 3rd Class passengers paid under 20£ while all 1st Class passengers paid 20£ or more. It appears that one had a better chance of survival if they paid 20£ or more, which is more likely to be 1st Class passengers.
+
+
+**Boxplots**
+
+```{r boxplot, echo=FALSE}
+titanic_Class1 <- data.frame(titanic[titanic$Pclass == 1,])
+titanic_Class2 <- data.frame(titanic[titanic$Pclass == 2,])
+titanic_Class3 <- data.frame(titanic[titanic$Pclass == 3,])
+
+boxplot(titanic$Age ~ titanic$Pclass, xlab = "Class", ylab = "Age", col = c("deepskyblue3"))
+boxplot(titanic$Fare ~ titanic$Pclass, xlab = "Class", ylab = "Fare", col = c("deepskyblue3"))
+boxplot(titanic$Age ~ titanic$Survived, xlab = "Survived", ylab = "Age", col = c("red"))
+boxplot(titanic$Age ~ titanic$Survived, xlab = "Class", ylab = "Age", col = c("deepskyblue3"))
+boxplot(titanic_Class1$Fare ~ titanic_Class1$Sex_M_F, xlab = "1st Class Female v Male", ylab = "Fare", col = c("green"))
+boxplot(titanic_Class2$Fare ~ titanic_Class2$Sex_M_F, xlab = "2nd Class Female v Male", ylab = "Fare", col = c("green"))
+boxplot(titanic_Class3$Fare ~ titanic_Class3$Sex_M_F, xlab = "3rd Class Female v Male", ylab = "Fare", col = c("green"))
+boxplot(titanic_Class1$Age ~ titanic_Class1$Survived, xlab = "1st Class Survival", ylab = "Age", col = c("red"))
+boxplot(titanic_Class2$Age ~ titanic_Class2$Survived, xlab = "2nd Class Survival", ylab = "Age", col = c("red"))
+boxplot(titanic_Class3$Age ~ titanic_Class3$Survived, xlab = "3rd Class Survival", ylab = "Age", col = c("red"))
+#fitlm <- lm(Survived~., data=titanic)
+#summary(fitlm)
+```
+
+## 3) Data Analysis:<br>&nbsp;&nbsp;&nbsp;&nbsp;i) Hypothesis Testing: Construct a hypothesis testing with null and alternative hypotheses. Use the appropriate test to get the conclusion.<br>&nbsp;&nbsp;&nbsp;&nbsp;ii) Build a linear regression model with subset selection. Please indicate all significant attributes, assess your model, and predict in a test dataset.
+
+**Split dataset into 80:20 train and test data with name `TitanicTraining` and `TitanicTest` respectively**
+
+```{r}
+i <- sample(2, nrow(titanic), replace=TRUE, prob=c(0.8, 0.2))
+TitanicTraining <- titanic[i==1,]
+TitanicTest <- titanic[i==2,]
+str(TitanicTraining)
+summary(TitanicTraining)
+str(TitanicTest)
+summary(TitanicTest)
+summ_train_age<-summary(TitanicTraining$Age)
+summ_train_fare<-summary(TitanicTraining$Fare)
+train<-dim(TitanicTraining)
+test<-dim(TitanicTest)
+pairs(TitanicTraining, lower.panel = NULL)
+cor(TitanicTraining[3:4])
+```
+
+> The `TitanicTraining` dataset has `r train[1]` observations of 7 variables and `TitanicTest` dataset has `r test[1]` observations of 5 attributes which are either data type: Factor, integer, or number. There are no missing values.<br>By using the `summary` function, we are able to tell that the average age of a passenger on the Titanic was `r summ_train_age[4]` years old with `r summ_train_age[6]` being the oldest. The average price paid for fare was £`r summ_train_fare[4]`
+
+
+**i) Hypothesis Testing: Construct a hypothesis testing with null and alternative hypotheses.**
+<br>We want to investigate the independence of `Pclass` and `Survived` in `TitanicTraining` dataset. Here
+
+- $H_0$: (**null hypothesis**) The two variables are independent.
+- $H_1$: (**alternative hypothesis**) The two variables are dependent.
+
+**Test for Independence (Categorical Data)**
+
+We wish to determine whether a passenger's chance of survival is independent of their class. Members of a random testing sample of `r train[1]` passengers on the Titanic are classified as to whether they are in 1st, 2nd, or 3rd class and whether or not they survived. 
+
+**Contingency table for Class**
+
+```{r , echo=FALSE}
+contTable<- table(TitanicTraining$Survived, TitanicTraining$Pclass)
+contTable
+```
+
+**Display the proportion for Class**
+```{r , echo=FALSE}
+ prop.table(contTable)
+```
+
+**Chi-squared Test for Class**
+```{r , echo=FALSE}
+chisqtestResult<- chisq.test(contTable)
+chisqtestResult
+```
+
+>Since we get a p-value less than the significance level of 0.05, we can reject the null hypothesis and conclude that the two variables are dependent. We conclude that a passenger's `Pclass` and his or her chance of survival are not independent.
+
+**Cramer's V (phi) Coefficient for Class**
+
+We can use the function `cramerV` in package `rcompanion` to calculate Cramer's V value.
+
+```{r}
+#calculate Cramer's V
+cramerV(contTable)
+```
+
+The range of Cramer's V value is from 0 to 1. The value we got here is very small. Even though `Pclass` and `Survived` are dependent, they don't have a very strong association.
+
+**i) Hypothesis Testing: Construct a hypothesis testing with null and alternative hypotheses.**
+<br>We want to investigate the independence of `Sex_M_F` and `Survived` in `TitanicTraining` dataset. Here
+
+- $H_0$: (**null hypothesis**) The two variables are independent.
+- $H_1$: (**alternative hypothesis**) The two variables are dependent.
+
+**Test for Independence (Categorical Data)**
+
+We wish to determine whether a passenger's chance of survival is independent of their sex. Members of a random testing sample of `r train[1]` passengers on the Titanic are classified by sex and whether or not they survived. 
+
+**Contingency table for Sex**
+
+```{r , echo=FALSE}
+contTable2<- table(TitanicTraining$Survived, TitanicTraining$Sex_M_F)
+contTable2
+```
+
+**Display the proportion for Sex**
+```{r , echo=FALSE}
+ prop.table(contTable2)
+```
+
+**Chi-squared Test for Class**
+```{r , echo=FALSE}
+chisqtestResult2<- chisq.test(contTable2)
+chisqtestResult2
+```
+
+>Since we get a p-value less than the significance level of 0.05, we can reject the null hypothesis and conclude that the two variables are dependent. We conclude that a passenger's sex and his or her chance of survival are not independent.
+
+**Cramer's V (phi) Coefficient for Class**
+
+We can use the function `cramerV` in package `rcompanion` to calculate Cramer's V value.
+
+```{r}
+#calculate Cramer's V
+cramerV(contTable2)
+```
+
+The range of Cramer's V value is from 0 to 1. The value we got here is closer to 1. `Sex_M_F` and `Survived` are dependent and have a strong association.
+
+### Association between One Numerical Variable and One Categorical Variable
+
+<br>We want to investigate the independence of `Fare` and `Survived` in `TitanicTraining` dataset. Here
+
+- $H_0$: (**null hypothesis**) The two variables are independent.
+- $H_1$: (**alternative hypothesis**) The two variables are dependent.
+
+<br>We want to investigate the independence of `Age` and `Survived` in `TitanicTraining` dataset. Here
+
+- $H_0$: (**null hypothesis**) The two variables are independent.
+- $H_1$: (**alternative hypothesis**) The two variables are dependent.
+```{r}
+ggplot(TitanicTraining, aes(x = Survived , y = Fare )) + geom_boxplot()
+ggplot(TitanicTraining, aes(x = Survived , y = Age )) + geom_boxplot()
+```
+
+We can use **ANOVA test** to check the association between one numerical variable and one categorical variable with `aov` function.
+ANOVA(AOV) is short for ANalysis Of VAriance.
+
+```{r}
+aov1 <- aov(Fare ~ Survived, data = TitanicTraining)
+summary(aov1)
+aov2 <- aov(Age ~ Survived, data = TitanicTraining)
+summary(aov2)
+```
+
+**Interpretation**:
+
+* The Df column displays the degrees of freedom for the independent variable (the number of levels in the variable minus 1), and the degrees of freedom for the residuals (the total number of observations minus one and minus the number of levels in the independent variables).
+
+* The Sum Sq column displays the sum of squares (a.k.a. the total variation between the group means and the overall mean).
+
+* The Mean Sq column is the mean of the sum of squares, calculated by dividing the sum of squares by the degrees of freedom for each parameter.
+
+* The F-value column is the test statistic from the F test. This is the mean square of each independent variable divided by the mean square of the residuals. The larger the F value, the more likely it is that the variation caused by the independent variable is real and not due to chance.
+
+* The Pr(>F) column is the p-value of the F-statistic. This shows how likely it is that the F-value calculated from the test would have occurred if the null hypothesis of no difference among group means were true.
+
+The p-value of the `Survived` variable is very low (`r summary(aov1)[[1]][1, 5]`), so it appears that the `Fare` has a real impact on the `Survived`.
+<br>
+The p-value of the `Survived` variable is slightly low (`r summary(aov2)[[1]][1, 5]`), so it appears that the `Age` has a slight impact on the `Survived`.
+
+**ii) Build a linear regression model with subset selection. Please indicate all significant attributes, assess your model, and predict in a test dataset.**
+
+## Simple Linear Regression Model
+
+```{r}
+fitlm <- lm(Fare~Age, data=TitanicTraining[1:5])
+summary(fitlm)
+lm_summary<-summary(fitlm)
+#calculate residual sum of squares
+rss1<-deviance(fitlm)
+```
+
+> A simple linear regression of `Fare` by `Age` using `TitanicTest` shows that there is a weak relationship between the target (`Fare`) and the input (`Age`) because the p-value is `r lm_summary$coefficients[8]`. The residual standard error (RSE) is `r lm_summary$sigma` with $R^2$ of `r lm_summary$r.squared`. However, the F-statistic is greater than 1 (`r lm_summary$fstatistic[1]`), but not by much.
+
+*Predict `Fare` in `TitanicTest` and calculate `MAE` and `MSE`.
+
+```{r}
+ypred <-predict(object = fitlm, newdata = TitanicTest[1:5])
+sum1<-summary(ypred)
+mae1<-MAE(y_pred = ypred, y_true = TitanicTest$Fare)
+mse1<-MSE(y_pred = ypred, y_true = TitanicTest$Fare)
+```
+
+> Min: `r sum1[1]`
+<br>1st Qu: `r sum1[2]`
+<br>Median: `r sum1[3]`
+<br>Mean: `r sum1[4]`
+<br>3rd Qu: `r sum1[5]`
+<br>Max: `r sum1[6]`
+<br>After prediction, we can get MAE is `r mae1` and MSE is `r mse1`. 
+
+## Multiple Linear Regression
+
+```{r}
+fitlm2 <- lm(Fare~., data=TitanicTraining[1:5])
+matrix_coef <- summary(fitlm2)$coefficients  # Extract coefficients in matrix
+lm_summary2<-summary(fitlm2)
+summary(fitlm2)
+#calculate residual sum of squares
+rss2<-deviance(fitlm2)
+```
+
+> A multiple linear regression of `Fare` by all features (except group attributes: AgeGroup and FairPrice) in `TitanicTraining` shows that there is a strong relationship between the target (`Fare`) and multiple inputs because the p-value is very small:
+<br>`Pclass2` `r matrix_coef[3,4]`
+<br>`Pclass3` `r matrix_coef[4,4]`
+<br>`Age` `r matrix_coef[4,4]`
+<br>`Sex_M_FM` `r matrix_coef[5,4]`
+<br>The residual standard error (RSE) is `r lm_summary2$sigma` with $R^2$ of `r lm_summary2$r.squared`. Lastly, the F-statistic is greater than 1 (`r lm_summary2$fstatistic[1]`).
+
+* Predict `Fare` in `TitanicTest` and calculate `MAE` and `MSE`.
+
+```{r}
+ypred2 <-predict(object = fitlm2, newdata =TitanicTest[1:5])
+sum2<-summary(ypred2)
+mae2<-MAE(y_pred = ypred2, y_true = TitanicTest$Fare)
+mse2<-MSE(y_pred = ypred2, y_true = TitanicTest$Fare)
+```
+
+> Min: `r sum2[1]`
+<br>1st Qu: `r sum2[2]`
+<br>Median: `r sum2[3]`
+<br>Mean: `r sum2[4]`
+<br>3rd Qu: `r sum2[5]`
+<br>Max: `r sum2[6]`
+<br>After prediction, we can get MAE is `r mae2` and MSE is `r mse2`. 
+
+## Subset Selection Linear Regression Model
+
+### Forward Stepwise
+
+```{r}
+# Create a null model 
+intercept_only <- lm(Fare ~ 1, data=TitanicTraining[1:5])
+# Create a full model
+all <- lm(Fare~., data=TitanicTraining[1:5])
+# perform forward step-wise regression
+forward <- stepAIC (intercept_only, direction='forward',scope = formula(all))
+# view results of forward stepwise regression
+forward$anova
+aic_all<-forward$anova
+aic1<-aic_all$AIC
+# view final model
+lm_summary3<-summary(forward)
+#calculate residual sum of squares
+rss3<-deviance(forward)
+
+```
+> The model resulting from a forward stepwise regression with `TitanicTraining` is:
+<br>`Fare` ~ `Pclass` + `Age` + `Sex_M_F` 
+
+* Predict `Fare` in `TitanicTest` and calculate `MAE` and `MSE`.
+
+```{r}
+ypred_forward <-predict(object = forward, newdata = TitanicTest[1:5])
+sum3<-summary(ypred_forward)
+mae3<-MAE(y_pred = ypred_forward, y_true = TitanicTest$Fare)
+mse3<-MSE(y_pred = ypred_forward, y_true = TitanicTest$Fare)
+```
+
+> Min: `r sum3[1]`
+<br>1st Qu: `r sum3[2]`
+<br>Median: `r sum3[3]`
+<br>Mean: `r sum3[4]`
+<br>3rd Qu: `r sum3[5]`
+<br>Max: `r sum3[6]`
+<br>After prediction, we can get MAE is `r mae3` and MSE is `r mse3`. 
+
+### Backward Stepwise 
+
+
+```{r}
+backward <- stepAIC (all, direction='backward')
+backward$anova
+aic_all2<-backward$anova
+aic2<-aic_all2$AIC
+lm_summary4<-summary(backward)
+#calculate residual sum of squares
+rss4<-deviance(backward)
+```
+
+>The model resulting from a backward stepwise regression with `TitanicTraining[1:5]` is:
+<br>`Fare` ~ `Pclass` + `Age` + `Sex_M_F` 
+
+*Predict `Fare` in `TitanicTest` and calculate `MAE` and `MSE`.
+
+```{r}
+#Get MAE and MSE
+ypred_backward <-predict(object = backward, newdata = TitanicTest[1:5])
+sum4<-summary(ypred_backward)
+mae4<-MAE(y_pred = ypred_backward, y_true = TitanicTest$Fare)
+mse4<-MSE(y_pred = ypred_backward, y_true = TitanicTest$Fare)
+```
+
+> Min: `r sum4[1]`
+<br>1st Qu: `r sum4[2]`
+<br>Median: `r sum4[3]`
+<br>Mean: `r sum4[4]`
+<br>3rd Qu: `r sum4[5]`
+<br>Max: `r sum4[6]`
+<br>After prediction, we can get MAE is `r mae4` and MSE is `r mse4`. 
+
+## Model Assessment
+
+Comparison of all the linear regression models:
+
+> Model 1 (simple linear regression) is the worst, only having $R^2$: `r lm_summary$r.squared`. Model 3 (forward regression) & 4 (backward regression) are identical and have the best results; mostly by having larger F-statistic values than Model 2. Model 2 has a slightly smaller `RSS`, slightly lower $R^2$, slightly smaller `MAE`, slightly larger `MSE` and smaller F-statistic.
+<br>**Model 1**: Simple linear regression of `Fare` by `Age` using `TitanicTraining[1:5]`
+<br>$R^2$: `r lm_summary$r.squared`
+<br>RSE: `r lm_summary$sigma`
+<br>RSS: `r rss1`
+<br>MAE: `r mae1`
+<br>MSE: `r mse1`
+<br>F-statistic: `r lm_summary$fstatistic[1]`
+<br>**Model 2**: Multiple linear regression of `Fare` by all features in `TitanicTraining[1:5]`
+<br>$R^2$: `r lm_summary2$r.squared`
+<br>RSE: `r lm_summary2$sigma`
+<br>RSS: `r rss2`
+<br>MAE: `r mae2`
+<br>MSE: `r mse2`
+<br>F-statistic: `r lm_summary2$fstatistic[1]`
+<br>**Model 3**: Forward stepwise regression with `TitanicTraining[1:5]`
+<br>`Fare` ~ `Pclass` + `Age` + `Sex_M_F`
+<br>$R^2$: `r lm_summary3$r.squared`
+<br>RSE: `r lm_summary3$sigma`
+<br>RSS: `r rss3`
+<br>MAE: `r mae3`
+<br>MSE: `r mse3`
+<br>F-statistic: `r lm_summary3$fstatistic[1]`
+<br>AIC: `r min(aic1)`
+<br>**Model 4**: Backward stepwise regression with `TitanicTraining[1:5]`
+<br>`Fare` ~ `Pclass` + `Age` + `Sex_M_F`
+<br>$R^2$: `r lm_summary4$r.squared`
+<br>RSE: `r lm_summary4$sigma`
+<br>RSS: `r rss4`
+<br>MAE: `r mae4`
+<br>MSE: `r mse4`
+<br>F-statistic: `r lm_summary4$fstatistic[1]`
+<br>AIC: `r min(aic2)`
